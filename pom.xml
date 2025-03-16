@@ -22,6 +22,15 @@
   </properties>
 
   <dependencies>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+    </dependency>
     <!-- JUnit 5 for testing -->
     <dependency>
       <groupId>org.junit.jupiter</groupId>
@@ -71,6 +80,18 @@
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
         <version>${spring.boot.version}</version>
+      </plugin>
+
+      <plugin>
+        <groupId>org.flywaydb</groupId>
+        <artifactId>flyway-maven-plugin</artifactId>
+        <version>9.16.3</version>
+        <configuration>
+          <url>jdbc:postgresql://localhost:5432/sbomfinder</url>
+          <user>postgres</user>
+          <password>yebA@369</password>
+          <baselineOnMigrate>true</baselineOnMigrate>
+        </configuration>
       </plugin>
     </plugins>
   </build>
