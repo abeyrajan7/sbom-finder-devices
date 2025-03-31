@@ -17,7 +17,6 @@ public class CommonSoftwareDTO {
         this.supplierDevice2 = supplierDevice2;
         this.componentType = componentType;
     }
-
     public String getName() { return name; }
     public String getVersionDevice1() { return versionDevice1; }
     public String getVersionDevice2() { return versionDevice2; }

@@ -10,7 +10,5 @@ import java.util.Optional;
 public interface SbomRepository extends JpaRepository<Sbom, Long> {
     @Query("SELECT s FROM Sbom s WHERE s.device.id = :deviceId")
     Optional<Sbom> findByDeviceId(@Param("deviceId") Long deviceId);
-
     Optional<Sbom> findByDocumentNamespace(String documentNamespace);
-
 }

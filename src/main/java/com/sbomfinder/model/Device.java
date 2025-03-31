@@ -14,10 +14,10 @@ public class Device {
     @JoinColumn(name = "sbom_id", referencedColumnName = "id")
     private Sbom sbom;
 
-    @Column(name = "device_name", nullable = false) // ✅ Now auto-fetched from SBOM
+    @Column(name = "device_name", nullable = false)
     private String deviceName;
 
-    @Column(name = "manufacturer", nullable = false) // ✅ Auto-fetched from SBOM
+    @Column(name = "manufacturer", nullable = false)
     private String manufacturer;
 
     @Column
@@ -62,9 +62,9 @@ public class Device {
 
     // ✅ Setters
     public void setId(Long id) { this.id = id; }
-    public void setDeviceName(String deviceName) { this.deviceName = deviceName; } // ✅ Auto-fetched from SBOM
-    public void setManufacturer(String manufacturer) { this.manufacturer = manufacturer; } // ✅ Auto-fetched from SBOM
-    public void setCategory(String category) { this.category = category; } // ✅ User-provided
+    public void setDeviceName(String deviceName) { this.deviceName = deviceName; }
+    public void setManufacturer(String manufacturer) { this.manufacturer = manufacturer; }
+    public void setCategory(String category) { this.category = category; }
     public void setOperatingSystem(String operatingSystem) { this.operatingSystem = operatingSystem; }
     public void setOsVersion(String osVersion) { this.osVersion = osVersion; }
     public void setKernelVersion(String kernelVersion) { this.kernelVersion = kernelVersion; }

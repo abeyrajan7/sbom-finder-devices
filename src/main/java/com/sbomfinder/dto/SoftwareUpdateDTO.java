@@ -2,7 +2,7 @@ package com.sbomfinder.dto;
 
 public class SoftwareUpdateDTO {
     private String softwareName;
-    private String status; // "Added" or "Removed"
+    private String status;
     private String oldVersion;
     private String newVersion;
 

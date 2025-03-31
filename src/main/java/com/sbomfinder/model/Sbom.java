@@ -3,6 +3,7 @@ package com.sbomfinder.model;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.ArrayList;
 
 @Entity
 @Table(name = "sbom_files")
@@ -36,12 +37,11 @@ public class Sbom {
     @OneToOne(mappedBy = "sbom", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private Device device;
 
-
-    @OneToMany(mappedBy = "sbom", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<SoftwarePackage> softwarePackages;
-
     @OneToMany(mappedBy = "sbom", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<ExternalReference> externalReferences;
+
+    @OneToMany(mappedBy = "sbom", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<SoftwarePackage> softwarePackages;
 
     public Sbom() {}
 
@@ -55,7 +55,6 @@ public class Sbom {
         this.creatorTool = creatorTool;
     }
 
-    // Getters and Setters...
     // Getters
     public Long getId() { return id; }
     public String getName() { return name; }
@@ -65,8 +64,8 @@ public class Sbom {
     public LocalDateTime getCreated() { return created; }
     public String getCreatorOrganization() { return creatorOrganization; }
     public String getCreatorTool() { return creatorTool; }
-    public List<SoftwarePackage> getSoftwarePackages() { return softwarePackages; } // ✅ Fix
-    public List<ExternalReference> getExternalReferences() { return externalReferences; } // ✅ Fix
+    public List<SoftwarePackage> getSoftwarePackages() { return softwarePackages; }
+    public List<ExternalReference> getExternalReferences() { return externalReferences; }
 
     // Setters
     public void setId(Long id) { this.id = id; }

@@ -17,6 +17,8 @@ public interface SoftwarePackageRepository extends JpaRepository<SoftwarePackage
         return findPackagesBySbomIdAndKeyword(sbomId, "firmware");
     }
 
+    List<SoftwarePackage> findByDeviceId(Long deviceId);
+
     default List<SoftwarePackage> findOSBySbomId(Long sbomId) {
         return findPackagesBySbomIdAndKeyword(sbomId, "linux");
     }
@@ -24,6 +26,9 @@ public interface SoftwarePackageRepository extends JpaRepository<SoftwarePackage
     default List<SoftwarePackage> findDriversBySbomId(Long sbomId) {
         return findPackagesBySbomIdAndKeyword(sbomId, "driver");
     }
+
+    @Query("SELECT sp FROM SoftwarePackage sp WHERE sp.sbom.device.deviceName = :deviceName AND sp.sbom.device.manufacturer = :manufacturer")
+    List<SoftwarePackage> findByDeviceNameAndManufacturer(String deviceName, String manufacturer);
 }
 
 

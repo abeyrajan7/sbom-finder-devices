@@ -20,22 +20,22 @@ import java.io.IOException;
 import java.time.OffsetDateTime;
 import com.sbomfinder.model.SoftwarePackage;
 import com.sbomfinder.repository.SoftwarePackageRepository;
-
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
-
 import com.sbomfinder.dto.CompareDevicesRequest;
 import com.sbomfinder.dto.DeviceComparisonDTO;
+import com.sbomfinder.dto.NormalizedSbomDataDTO;
 import com.sbomfinder.model.Device;
 import com.sbomfinder.model.SoftwarePackage;
 import com.sbomfinder.repository.DeviceRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
+import com.sbomfinder.service.SbomService;
 
 @RestController
+@CrossOrigin(origins = "http://localhost:3000") 
 @RequestMapping("/api/sboms")
 public class SbomController {
 
@@ -54,116 +54,69 @@ public class SbomController {
     @Autowired
     private ExternalReferenceRepository externalReferenceRepository;
 
+    @Autowired
+    private SbomService sbomService;
+
     @PostMapping("/upload-sbom")
-    public ResponseEntity<String> uploadSbom(@RequestParam("sbomFile") MultipartFile sbomFile,
-                                             @RequestParam("category") String category) {
-        try {
-            // Parse SBOM JSON file
-            JsonNode jsonNode = objectMapper.readTree(sbomFile.getInputStream());
+public ResponseEntity<String> uploadSbom(@RequestParam("sbomFile") MultipartFile sbomFile,
+                                         @RequestParam("category") String category) {
+    try {
+        JsonNode jsonNode = objectMapper.readTree(sbomFile.getInputStream());
+        String format = detectFormat(jsonNode);
 
-            // ✅ Extract values from SBOM
-            JsonNode digitalFootprintNode = jsonNode.path("digitalFootprint");
-            String digitalFootprint;
-            if (digitalFootprintNode.isArray()) {
-                digitalFootprint = StreamSupport.stream(digitalFootprintNode.spliterator(), false)
-                        .map(JsonNode::asText)
-                        .collect(Collectors.joining(", ")); // Convert array to comma-separated string
-            } else {
-                digitalFootprint = digitalFootprintNode.asText("Not Available");
-            }
-
-            String deviceName = jsonNode.path("metadata").path("component").path("name").asText("Unknown Device");
-            String manufacturer = jsonNode.path("metadata").path("component").path("manufacturer").asText("Unknown Manufacturer");
-            String operatingSystem = jsonNode.path("metadata").path("component").path("operatingSystem").asText("Unknown OS");
-            String osVersion = jsonNode.path("metadata").path("component").path("version").asText("Unknown Version");
-            String kernelVersion = jsonNode.path("metadata").path("component").path("kernel").asText("Unknown Kernel");
-            JsonNode toolsNode = jsonNode.path("metadata").path("tools");
-            String vendor = "Unknown Vendor";
-            String name = "Unknown";
-
-            if (toolsNode.isArray() && toolsNode.size() > 0) {
-                vendor = toolsNode.get(0).path("vendor").asText("Unknown Vendor");
-                name = toolsNode.get(0).path("name").asText("Unknown");
-            }
-
-            // ✅ Parse timestamp correctly
-            OffsetDateTime dateTime = OffsetDateTime.parse(jsonNode.path("metadata").path("timestamp").asText());
-            LocalDateTime createdTime = dateTime.toLocalDateTime();
-                Sbom newSbom = new Sbom(jsonNode.path("bomFormat").asText(), jsonNode.path("specVersion").asText(),
-                        jsonNode.path("dataLicense").asText(), jsonNode.path("documentNamespace").asText(),
-                        createdTime,
-                        vendor,
-                        name);
-                sbomRepository.save(newSbom);
-
-            System.out.println("saved successfully");
-            JsonNode externalRefsNode = jsonNode.path("externalReferences");
-            if (externalRefsNode != null && externalRefsNode.isArray()) {
-                for (JsonNode refNode : externalRefsNode) {
-                    ExternalReference externalReference = new ExternalReference(
-                            newSbom,
-                            refNode.path("referenceCategory").asText(),
-                            refNode.path("referenceType").asText(),
-                            refNode.path("referenceLocator").asText()
-                    );
-                    externalReferenceRepository.save(externalReference);
-                }
-            }
-
-
-
-            // ✅ Check if Device already exists
-            Device existingDevice = deviceRepository.findByDeviceNameAndManufacturer(deviceName, manufacturer).orElse(null);
-            if (existingDevice == null) {
-                existingDevice = new Device(deviceName, manufacturer, category, operatingSystem, osVersion, kernelVersion, digitalFootprint, newSbom);
-                deviceRepository.save(existingDevice);
-            }
-
-            // ✅ Extract and Save Software Packages (Avoid Duplicates)
-            JsonNode packagesNode = jsonNode.path("components");
-            if (packagesNode != null && packagesNode.isArray()) {
-                for (JsonNode packageNode : packagesNode) {
-                    String packageName = packageNode.path("name").asText();
-                    String packageVersion = packageNode.path("version").asText(null);
-                    String supplier = packageNode.path("publisher").asText(null);
-                    String downloadLocation = packageNode.path("downloadLocation").asText(null);
-                    String licenseDeclared = packageNode.path("licenses").size() > 0 ? packageNode.path("licenses").get(0).path("license").path("id").asText(null) : null;
-                    String copyrightText = packageNode.path("copyrightText").asText(null);
-                    String componentType = packageNode.path("type").asText(null); // OS, Kernel, Application
-
-                    // ✅ Check if Software Package exists before inserting
-                    if (!softwarePackageRepository.existsByNameAndVersion(packageName, packageVersion)) {
-                        SoftwarePackage softwarePackage = new SoftwarePackage(newSbom, packageName, packageVersion, supplier, downloadLocation,
-                                licenseDeclared, licenseDeclared, copyrightText, componentType);
-                        softwarePackageRepository.save(softwarePackage);
-                    }
-                }
-            }
-
-            // ✅ Extract and Save External References (Avoid Duplicates)
-//            JsonNode externalRefsNode = jsonNode.path("externalReferences");
-//            if (externalRefsNode != null && externalRefsNode.isArray()) {
-//                for (JsonNode refNode : externalRefsNode) {
-//                    String referenceCategory = refNode.path("referenceCategory").asText(null);
-//                    String referenceType = refNode.path("referenceType").asText(null);
-//                    String referenceLocator = refNode.path("referenceLocator").asText(null);
-//
-//                    if (referenceCategory != null && referenceType != null && referenceLocator != null) {
-//                        // ✅ Check if External Reference exists before inserting
-//                        if (!externalReferenceRepository.existsByReferenceLocator(referenceLocator)) {
-//                            ExternalReference externalReference = new ExternalReference(newSbom, referenceCategory, referenceType, referenceLocator);
-//                            externalReferenceRepository.save(externalReference);
-//                        }
-//                    }
-//                }
-//            }
-
-            return ResponseEntity.ok("SBOM, Device, Software Packages, and External References stored successfully without duplicates!");
-
-        } catch (IOException e) {
-            return ResponseEntity.badRequest().body("Error processing SBOM file: " + e.getMessage());
+        NormalizedSbomDataDTO sbomData;
+        switch (format) {
+            case "cyclonedx":
+                sbomData = parseCycloneDX(jsonNode, category);
+                break;
+            case "spdx":
+                sbomData = parseSPDX(jsonNode, category);
+                break;
+            default:
+                return ResponseEntity.badRequest().body("Unsupported SBOM format");
         }
+        Sbom newSbom = new Sbom(sbomData.getFormat(), sbomData.getSpecVersion(), sbomData.getDataLicense(),
+                sbomData.getDocumentNamespace(), sbomData.getCreatedTime(),
+                sbomData.getVendor(), sbomData.getToolName());
+        sbomRepository.save(newSbom);
+
+        // Save External References
+        for (JsonNode ref : sbomData.getExternalReferences()) {
+            ExternalReference extRef = new ExternalReference(newSbom,
+                    ref.path("referenceCategory").asText(""),
+                    ref.path("referenceType").asText(""),
+                    ref.path("referenceLocator").asText(""));
+            externalReferenceRepository.save(extRef);
+        }
+
+        // Save Device
+        Device device = deviceRepository.findByDeviceNameAndManufacturer(
+            sbomData.getDeviceName(),
+            sbomData.getManufacturer()
+        ).orElseGet(() -> {
+        Device newDevice = new Device(
+            sbomData.getDeviceName(),
+            sbomData.getManufacturer(),
+            sbomData.getCategory(),
+            sbomData.getOperatingSystem(),
+            sbomData.getOsVersion(),
+            sbomData.getKernelVersion(),
+            sbomData.getDigitalFootprint(),
+            newSbom
+        );
+        return deviceRepository.save(newDevice);
+        });
+        if (format.equals("spdx")) {
+            sbomService.processSpdxPackages(sbomData.getPackages(), newSbom, device);
+        } else if (format.equals("cyclonedx")) {
+            sbomService.processCycloneDXPackages(sbomData.getPackages(), newSbom, device);
+        }
+
+        return ResponseEntity.ok("SBOM parsed and stored successfully for format: " + format);
+    } catch (IOException e) {
+        return ResponseEntity.badRequest().body("Error parsing SBOM: " + e.getMessage());
     }
+}
 
     // DTO for API Response
     public static class DeviceDetailsResponse {
@@ -186,6 +139,173 @@ public class SbomController {
         }
     }
 
+    private String detectFormat(JsonNode jsonNode) {
+        if (jsonNode.has("bomFormat") && "CycloneDX".equalsIgnoreCase(jsonNode.get("bomFormat").asText())) {
+            return "cyclonedx";
+        } else if (jsonNode.has("spdxVersion")) {
+            return "spdx";
+        }
+        return "unknown";
+    }
 
+    // function to parse SPDX format sbom
+    private NormalizedSbomDataDTO parseCycloneDX(JsonNode jsonNode, String category) {
+        NormalizedSbomDataDTO data = new NormalizedSbomDataDTO();
+        data.setFormat("CycloneDX");
+        data.setSpecVersion(jsonNode.path("specVersion").asText(""));
+        data.setDataLicense(jsonNode.path("dataLicense").asText(""));
+        data.setDocumentNamespace(jsonNode.path("documentNamespace").asText(""));
+        JsonNode metadataNode = jsonNode.path("metadata");
+
+        // Safely parse created time
+        if (metadataNode.has("timestamp")) {
+           String timestamp = metadataNode.path("timestamp").asText();
+          if (timestamp != null && !timestamp.isEmpty()) {
+              data.setCreatedTime(java.time.OffsetDateTime.parse(timestamp).toLocalDateTime());
+          }
+        }
+
+        // Safe access for tools[0]
+        JsonNode toolsArray = metadataNode.path("tools");
+        if (toolsArray != null && toolsArray.isArray() && toolsArray.size() > 0) {
+            JsonNode toolNode = toolsArray.get(0);
+            data.setVendor(toolNode.path("vendor").asText("Unknown Vendor"));
+            data.setToolName(toolNode.path("name").asText("Unknown Tool"));
+        } else {
+            data.setVendor("Unknown Vendor");
+            data.setToolName("Unknown Tool");
+        }
+        // Parse component info
+        JsonNode component = metadataNode.path("component");
+        String rawName = component.path("name").asText("Unknown Device");
+        System.out.println(SbomService.cleanDeviceName(rawName));
+        data.setDeviceName(SbomService.cleanDeviceName(rawName));
+        data.setManufacturer(component.path("manufacturer").asText("Unknown Manufacturer"));
+        data.setOperatingSystem(component.path("operatingSystem").asText("Unknown OS"));
+        data.setOsVersion(component.path("version").asText("Unknown Version"));
+        data.setKernelVersion(component.path("kernel").asText("Unknown Kernel"));
+
+        // Digital Footprint
+        Set<String> footprintSet = new HashSet<>();
+
+        // 1. From external references
+        JsonNode externalRefs = jsonNode.path("externalReferences");
+        if (externalRefs.isArray()) {
+            for (JsonNode ref : externalRefs) {
+                String locator = ref.path("referenceLocator").asText();
+                String domain = SbomService.extractDomain(locator);
+                if (!domain.isEmpty()) footprintSet.add(domain);
+            }
+        }
+
+        // 2. From components
+        JsonNode components = jsonNode.path("components");
+            if (components.isArray()) {
+                for (JsonNode comp : components) {
+                // downloadLocation
+                String downloadUrl = comp.path("downloadLocation").asText();
+                String domain = SbomService.extractDomain(downloadUrl);
+                if (!domain.isEmpty()) footprintSet.add(domain);
+
+                // externalRefs
+                JsonNode extRefs = comp.path("externalRefs");
+                if (extRefs.isArray()) {
+                    for (JsonNode ref : extRefs) {
+                        String locator = ref.path("referenceLocator").asText();
+                        if (locator.startsWith("pkg:")) {
+                            String[] parts = locator.split("/");
+                            if (parts.length > 1) footprintSet.add(parts[0].replace("pkg:", ""));
+                        } else {
+                            String urlDomain = SbomService.extractDomain(locator);
+                            if (!urlDomain.isEmpty()) footprintSet.add(urlDomain);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. From tools
+        JsonNode toolsArrayMetadata = jsonNode.path("metadata").path("tools");
+        if (toolsArrayMetadata.isArray()) {
+            for (JsonNode tool : toolsArrayMetadata) {
+                String toolName = tool.path("name").asText(null);
+                if (toolName != null && !toolName.isEmpty()) footprintSet.add(toolName);
+                String vendor = tool.path("vendor").asText(null);
+                if (vendor != null && !vendor.isEmpty()) footprintSet.add(vendor);
+            }
+        }
+
+        // Final fallback
+        if (footprintSet.isEmpty()) {
+            data.setDigitalFootprint("Not Available");
+        } else {
+            String joined = String.join(", ", footprintSet);
+            data.setDigitalFootprint(joined);
+        }
+
+        // Packages
+        List<JsonNode> componentsList = new ArrayList<>();
+        JsonNode componentsNode = jsonNode.path("components");
+        if (componentsNode.isArray()) {
+            componentsList = StreamSupport.stream(componentsNode.spliterator(), false)
+                    .collect(Collectors.toList());
+        }
+        data.setPackages(componentsList);
+
+        // External References
+        List<JsonNode> externalRefsList = new ArrayList<>();
+        JsonNode extRefsNode = jsonNode.path("externalReferences");
+        if (extRefsNode.isArray()) {
+            externalRefsList = StreamSupport.stream(extRefsNode.spliterator(), false)
+                    .collect(Collectors.toList());
+        }
+        data.setExternalReferences(externalRefsList);
+
+        data.setCategory(category);
+        return data;
+    }
+
+    // function to parse SPDX format sbom
+    private NormalizedSbomDataDTO parseSPDX(JsonNode jsonNode, String category) {
+            NormalizedSbomDataDTO data = new NormalizedSbomDataDTO();
+            data.setFormat("SPDX");
+            data.setSpecVersion(jsonNode.path("spdxVersion").asText());
+            data.setDataLicense(jsonNode.path("dataLicense").asText());
+            data.setDocumentNamespace(jsonNode.path("documentNamespace").asText());
+            data.setCreatedTime(LocalDateTime.now()); // SPDX doesn't always provide timestamp
+
+            JsonNode creationInfo = jsonNode.path("creationInfo");
+            if (creationInfo.has("creators") && creationInfo.path("creators").isArray()) {
+                data.setVendor(creationInfo.path("creators").get(0).asText("Unknown Vendor"));
+            } else {
+                data.setVendor("Unknown Vendor");
+            }
+            data.setToolName(creationInfo.path("comment").asText("Unknown"));
+            String rawName = jsonNode.path("name").asText("Unknown Device");
+            data.setDeviceName(SbomService.cleanDeviceName(rawName));
+            data.setManufacturer("Unknown"); // SPDX often lacks manufacturer info
+            data.setOperatingSystem("Unknown OS");
+            data.setOsVersion("Unknown Version");
+            data.setKernelVersion("Unknown Kernel");
+            data.setDigitalFootprint("Not Available");
+
+            // Safe way to extract packages list
+            List<JsonNode> packagesList = new ArrayList<>();
+            JsonNode packagesNode = jsonNode.path("packages");
+            if (packagesNode.isArray()) {
+                packagesList = StreamSupport.stream(packagesNode.spliterator(), false)
+                                    .collect(Collectors.toList());
+            }
+            data.setPackages(packagesList);
+            List<JsonNode> externalRefsList = new ArrayList<>();
+            JsonNode externalRefsNode = jsonNode.path("externalDocumentRefs");
+            if (externalRefsNode.isArray()) {
+                externalRefsList = StreamSupport.stream(externalRefsNode.spliterator(), false)
+                                        .collect(Collectors.toList());
+            }
+            data.setExternalReferences(externalRefsList);
+            data.setCategory(category);
+
+            return data;
+        }
 }
-
